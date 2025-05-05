@@ -1,152 +1,170 @@
-﻿' Forms/GoogleAuthForm.vb
+﻿Imports System.Threading.Tasks
 Imports System.Windows.Forms
-Imports Google.Apis.Auth.OAuth2
 
-''' <summary>
-''' Google ავტორიზაციის ფორმა ბრაუზერის კომპონენტით
-''' </summary>
 Public Class GoogleAuthForm
-    ' მომხმარებლის ავტორიზაციის კოლბეკი
-    Public Event AuthenticationComplete(email As String, name As String, role As String)
+    ' ივენთის განსაზღვრა ავტორიზაციის დასრულებისთვის
+    Public Event AuthenticationComplete(ByVal sender As Object, ByVal e As AuthCompletedEventArgs)
 
-    ' ბრაუზერის კომპონენტი
-    Private browser As WebBrowser
+    ' ივენთ არგუმენტების კლასი
+    Public Class AuthCompletedEventArgs
+        Inherits EventArgs
 
-    ' ავტორიზებული მომხმარებლის კრედენციალები
-    Private credential As UserCredential = Nothing
+        Public Property IsAuthenticated As Boolean
+        Public Property UserEmail As String
+        Public Property UserName As String
+        Public Property UserRole As String
 
-    ''' <summary>
-    ''' კონსტრუქტორი
-    ''' </summary>
+        Public Sub New(isAuth As Boolean, email As String, name As String, role As String)
+            IsAuthenticated = isAuth
+            UserEmail = email
+            UserName = name
+            UserRole = role
+        End Sub
+    End Class
+
+    ' კონტროლების განცხადება
+    Private WithEvents btnLogin As Button
+    Private WithEvents btnCancel As Button
+    Private lblTitle As Label
+    Private lblDescription As Label
+    Private lblStatus As Label
+    Private progressBar As ProgressBar
+    Private pnlHeader As Panel
+    Private pnlFooter As Panel
+    Private pbGoogleLogo As PictureBox
+
+    ' ავტორიზაციის სერვისი
+    Private authService As New GoogleAuthService()
+
+    ' ფორმის კონსტრუქტორი
     Public Sub New()
+        ' ეს გამოძახება მოითხოვება დიზაინერის კომპონენტისთვის
         InitializeComponent()
+
+        ' სხვა ინიციალიზაცია
+        SetupForm()
     End Sub
 
-    ''' <summary>
-    ''' კომპონენტების ინიციალიზაცია
-    ''' </summary>
-    Private Sub InitializeComponent()
-        ' ფორმის თვისებები
+    ' ფორმის დამატებითი კონფიგურაცია
+    Private Sub SetupForm()
         Me.Text = "Google-ით ავტორიზაცია"
-        Me.Size = New Size(800, 600)
-        Me.StartPosition = FormStartPosition.CenterScreen
+        Me.Size = New Size(450, 300)
+        Me.StartPosition = FormStartPosition.CenterParent
+        Me.FormBorderStyle = FormBorderStyle.FixedDialog
+        Me.MaximizeBox = False
         Me.MinimizeBox = False
 
-        ' ბრაუზერის კომპონენტის შექმნა
-        browser = New WebBrowser()
-        browser.Dock = DockStyle.Fill
-        browser.ScriptErrorsSuppressed = True
-        AddHandler browser.Navigated, AddressOf Browser_Navigated
-        Me.Controls.Add(browser)
+        ' ჰედერის პანელი
+        pnlHeader = New Panel()
+        pnlHeader.Dock = DockStyle.Top
+        pnlHeader.Height = 90
+        Me.Controls.Add(pnlHeader)
 
-        ' ფორმის ჩატვირთვის ივენთის დამატება
-        AddHandler Me.Load, AddressOf GoogleAuthForm_Load
+        ' Google-ის ლოგო
+        pbGoogleLogo = New PictureBox()
+        pbGoogleLogo.Size = New Size(50, 50)
+        pbGoogleLogo.Location = New Point(20, 20)
+        pbGoogleLogo.SizeMode = PictureBoxSizeMode.StretchImage
+        ' აქ უნდა ჩაიტვირთოს Google-ის ლოგო თუ გაქვთ
+        pnlHeader.Controls.Add(pbGoogleLogo)
+
+        ' სათაური
+        lblTitle = New Label()
+        lblTitle.Text = "შედით სისტემაში Google-ის ანგარიშით"
+        lblTitle.Font = New Font("Segoe UI", 14, FontStyle.Bold)
+        lblTitle.AutoSize = True
+        lblTitle.Location = New Point(80, 20)
+        pnlHeader.Controls.Add(lblTitle)
+
+        ' აღწერა
+        lblDescription = New Label()
+        lblDescription.Text = "დააჭირეთ ღილაკს Google-ის ავტორიზაციისთვის"
+        lblDescription.AutoSize = True
+        lblDescription.Location = New Point(80, 50)
+        pnlHeader.Controls.Add(lblDescription)
+
+        ' სტატუსის ლეიბლი
+        lblStatus = New Label()
+        lblStatus.Text = "მზადაა ავტორიზაციისთვის"
+        lblStatus.AutoSize = True
+        lblStatus.Location = New Point(150, 120)
+        Me.Controls.Add(lblStatus)
+
+        ' პროგრეს ბარი
+        progressBar = New ProgressBar()
+        progressBar.Location = New Point(80, 150)
+        progressBar.Width = 300
+        progressBar.Visible = False
+        Me.Controls.Add(progressBar)
+
+        ' ფუტერის პანელი
+        pnlFooter = New Panel()
+        pnlFooter.Dock = DockStyle.Bottom
+        pnlFooter.Height = 70
+        Me.Controls.Add(pnlFooter)
+
+        ' ღილაკები
+        btnLogin = New Button()
+        btnLogin.Text = "Google-ით შესვლა"
+        btnLogin.Size = New Size(150, 35)
+        btnLogin.Location = New Point(125, 20)
+        btnLogin.BackColor = Color.FromArgb(66, 133, 244)
+        btnLogin.ForeColor = Color.White
+        btnLogin.FlatStyle = FlatStyle.Flat
+        pnlFooter.Controls.Add(btnLogin)
+
+        btnCancel = New Button()
+        btnCancel.Text = "გაუქმება"
+        btnCancel.Size = New Size(100, 35)
+        btnCancel.Location = New Point(295, 20)
+        btnCancel.Visible = False
+        pnlFooter.Controls.Add(btnCancel)
     End Sub
 
-    ''' <summary>
-    ''' ფორმის ჩატვირთვის ივენთი
-    ''' </summary>
-    Private Sub GoogleAuthForm_Load(sender As Object, e As EventArgs)
+    ' ავტორიზაციის ღილაკზე დაჭერის ივენთ ჰენდლერი
+    Private Async Sub btnLogin_Click(sender As Object, e As EventArgs) Handles btnLogin.Click
         Try
-            ' ავტორიზაციის პროცესის დაწყება
-            Me.Cursor = Cursors.WaitCursor
+            ' UI განახლება
+            lblStatus.Text = "მიმდინარეობს ავტორიზაცია..."
+            progressBar.Visible = True
+            btnLogin.Enabled = False
+            btnCancel.Visible = True
 
-            ' ავტორიზაციის ასინქრონულად გაშვება
-            Dim authThread As New Threading.Thread(AddressOf StartAuthentication)
-            authThread.SetApartmentState(Threading.ApartmentState.STA)
-            authThread.Start()
-        Catch ex As Exception
-            Me.Cursor = Cursors.Default
-            MessageBox.Show($"ავტორიზაციის შეცდომა: {ex.Message}", "შეცდომა",
-                           MessageBoxButtons.OK, MessageBoxIcon.Error)
-            Me.DialogResult = DialogResult.Cancel
-            Me.Close()
-        End Try
-    End Sub
+            ' ავტორიზაციის პროცესის გაშვება ასინქრონულად
+            Dim userInfo As Dictionary(Of String, String) = Await authService.AuthenticateUserAsync()
 
-    ''' <summary>
-    ''' ავტორიზაციის პროცესის დაწყება ცალკე ნაკადში
-    ''' </summary>
-    Private Sub StartAuthentication()
-        Try
-            Me.Invoke(Sub()
-                          Me.Cursor = Cursors.WaitCursor
-                      End Sub)
+            If userInfo IsNot Nothing AndAlso userInfo.ContainsKey("isAuthenticated") AndAlso userInfo("isAuthenticated") = "true" Then
+                ' ივენთის გამოძახება
+                RaiseEvent AuthenticationComplete(Me, New AuthCompletedEventArgs(
+                    True,
+                    userInfo("email"),
+                    userInfo("name"),
+                    userInfo("role")))
 
-            ' Google ავტორიზაციის სერვისის გამოძახება
-            credential = GoogleAuthService.Authenticate()
-
-            If credential IsNot Nothing Then
-                ' ავტორიზაცია წარმატებულია, მივიღოთ ელფოსტა
-                Dim email As String = GoogleAuthService.GetUserEmail(credential)
-
-                If Not String.IsNullOrEmpty(email) Then
-                    ' მივიღოთ მომხმარებლის სახელი
-                    Dim name As String = GoogleAuthService.GetUserName(credential)
-
-                    ' მივიღოთ მომხმარებლის როლი
-                    Dim role As String = GoogleAuthService.GetUserRole(credential, email)
-
-                    ' თუ როლი ვერ მოიძებნა, ე.ი. მომხმარებელი არ არის რეგისტრირებული
-                    If String.IsNullOrEmpty(role) Then
-                        Me.Invoke(Sub()
-                                      Me.Cursor = Cursors.Default
-                                      MessageBox.Show("თქვენი ანგარიში არ არის რეგისტრირებული სისტემაში. " &
-                                                     "გთხოვთ დაუკავშირდეთ ადმინისტრატორს რეგისტრაციისთვის.",
-                                                     "ავტორიზაციის შეცდომა",
-                                                     MessageBoxButtons.OK, MessageBoxIcon.Warning)
-                                      Me.DialogResult = DialogResult.Cancel
-                                      Me.Close()
-                                  End Sub)
-                        Return
-                    End If
-
-                    ' ყველაფერი წარმატებულია, გამოვიძახოთ კოლბეკი და დავხუროთ ფორმა
-                    Me.Invoke(Sub()
-                                  Me.Cursor = Cursors.Default
-                                  RaiseEvent AuthenticationComplete(email, name, role)
-                                  Me.DialogResult = DialogResult.OK
-                                  Me.Close()
-                              End Sub)
-                Else
-                    ' ვერ მოხერხდა ელფოსტის მიღება
-                    Me.Invoke(Sub()
-                                  Me.Cursor = Cursors.Default
-                                  MessageBox.Show("ვერ მოხერხდა მომხმარებლის ელფოსტის მიღება. " &
-                                                 "გთხოვთ სცადოთ თავიდან.", "ავტორიზაციის შეცდომა",
-                                                 MessageBoxButtons.OK, MessageBoxIcon.Error)
-                                  Me.DialogResult = DialogResult.Cancel
-                                  Me.Close()
-                              End Sub)
-                End If
+                ' დიალოგის დახურვა
+                Me.DialogResult = DialogResult.OK
+                Me.Close()
             Else
-                ' ავტორიზაცია არ მოხერხდა
-                Me.Invoke(Sub()
-                              Me.Cursor = Cursors.Default
-                              MessageBox.Show("ავტორიზაცია ვერ მოხერხდა. გთხოვთ სცადოთ თავიდან.",
-                                             "ავტორიზაციის შეცდომა",
-                                             MessageBoxButtons.OK, MessageBoxIcon.Error)
-                              Me.DialogResult = DialogResult.Cancel
-                              Me.Close()
-                          End Sub)
+                ' ავტორიზაცია ვერ მოხერხდა
+                lblStatus.Text = "ავტორიზაცია ვერ მოხერხდა. გთხოვთ სცადოთ თავიდან."
+                progressBar.Visible = False
+                btnLogin.Enabled = True
+                btnCancel.Visible = False
             End If
         Catch ex As Exception
-            Me.Invoke(Sub()
-                          Me.Cursor = Cursors.Default
-                          MessageBox.Show($"ავტორიზაციის შეცდომა: {ex.Message}", "შეცდომა",
-                                         MessageBoxButtons.OK, MessageBoxIcon.Error)
-                          Me.DialogResult = DialogResult.Cancel
-                          Me.Close()
-                      End Sub)
+            MessageBox.Show("ავტორიზაციის შეცდომა: " & ex.Message, "შეცდომა", MessageBoxButtons.OK, MessageBoxIcon.Error)
+
+            ' UI განახლება
+            lblStatus.Text = "ავტორიზაცია ვერ მოხერხდა: " & ex.Message
+            progressBar.Visible = False
+            btnLogin.Enabled = True
+            btnCancel.Visible = False
         End Try
     End Sub
 
-    ''' <summary>
-    ''' ბრაუზერში URL-ის ცვლილების ივენთი
-    ''' </summary>
-    Private Sub Browser_Navigated(sender As Object, e As WebBrowserNavigatedEventArgs)
-        ' აქ შეგვიძლია დავამატოთ ლოგიკა, რომელიც გააკონტროლებს ბრაუზერის ნავიგაციას
-        ' მაგალითად, შეგვიძლია გავაჩეროთ ავტორიზაციის პროცესი ხელით, თუ მომხმარებელი
-        ' გადავა კონკრეტულ URL-ზე
+    ' გაუქმების ღილაკზე დაჭერის ივენთ ჰენდლერი
+    Private Sub btnCancel_Click(sender As Object, e As EventArgs) Handles btnCancel.Click
+        Me.DialogResult = DialogResult.Cancel
+        Me.Close()
     End Sub
 End Class
