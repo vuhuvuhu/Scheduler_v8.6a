@@ -114,6 +114,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
     <Compile Include="Services\GoogleAuthService.vb" />
+    <Compile Include="Services\GoogleSheetsService.vb" />
     <Compile Include="Utils\MenuManager.vb" />
   </ItemGroup>
   <ItemGroup>
