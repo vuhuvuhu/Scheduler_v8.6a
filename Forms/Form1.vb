@@ -119,23 +119,23 @@ Public Class Form1
     ''' ავტორიზაციის ღილაკზე დაჭერის ივენთ ჰენდლერი
     ''' </summary>
     Private Sub btnLogin_Click(sender As Object, e As EventArgs)
-        ' აქ გამოვიძახებთ GoogleAuthService-ს მეთოდს
-        ' ამჟამად სიმულაცია
-        SimulateGoogleLogin()
+        ' ავტორიზაციის ფორმის შექმნა
+        Dim authForm As New GoogleAuthForm()
+        AddHandler authForm.AuthenticationComplete, AddressOf OnAuthenticationComplete
+        authForm.ShowDialog()
     End Sub
 
     ''' <summary>
-    ''' Google-ით ავტორიზაციის სიმულაცია (დროებითი ფუნქცია)
-    ''' შემდგომში ჩანაცვლდება რეალური Google OAuth-ით
+    ''' ავტორიზაციის წარმატებით დასრულების ჰენდლერი
     ''' </summary>
-    Private Sub SimulateGoogleLogin()
+    Private Sub OnAuthenticationComplete(email As String, name As String, role As String)
+        ' მომხმარებლის მონაცემების შენახვა
+        currentUserEmail = email
+        currentUserName = name
+        currentUserRole = role
+
         ' მომხმარებლის ავტორიზებულად მონიშვნა
         isAuthenticated = True
-
-        ' სიმულირებული მომხმარებლის მონაცემები - რეალურად მოვა Google-დან
-        currentUserEmail = "example@gmail.com"
-        currentUserName = "გიორგი გიორგაძე"
-        currentUserRole = "admin"  ' როლი მოვა Google Sheets-დან
 
         ' მომხმარებლის ინფორმაციის განახლება
         UpdateUserInfo()
@@ -148,13 +148,14 @@ Public Class Form1
         btnLogout.Visible = True
 
         ' შეტყობინების გამოჩენა
-        MessageBox.Show("ავტორიზაცია წარმატებით დასრულდა!", "ავტორიზაცია", MessageBoxButtons.OK, MessageBoxIcon.Information)
+        MessageBox.Show("ავტორიზაცია წარმატებით დასრულდა!", "ავტორიზაცია",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information)
 
         ' კონტენტის პანელის გამოჩენა
         Dim contentPanel As Panel = DirectCast(Me.Controls("pnlContent"), Panel)
         contentPanel.Visible = True
 
-        ' საწყისი გვერდის ჩატვირთვა (შეგიძლიათ აქ გამოიძახოთ სხვა მეთოდი)
+        ' საწყისი გვერდის ჩატვირთვა
         LoadHomePage()
     End Sub
 
